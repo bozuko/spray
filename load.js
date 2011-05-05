@@ -1,4 +1,10 @@
+var inspect = require('util').inspect;
+
 var _http;
+
+var done = false;
+var wait_time_expired = false;
+
 
 /**
  * Run load test
@@ -42,6 +48,7 @@ function _run(options, buckets, callback) {
         one_sec_pkt_ct: 0,
         sent: 0,
         received: 0,
+        in_progress: 0,
         errors: 0,
         min_latency: 1000000000000,
         max_latency: 0
@@ -49,17 +56,31 @@ function _run(options, buckets, callback) {
 
     var check = function() {
         var now = Date.now();
-        if ((now - stats.start_time) >= options.time) {
-            process.stdout.write('\n');
-            return callback(null, stats);
+        if (!done && (now - stats.start_time) >= options.time) {
+            done = true;
+            stats.end_time = now;
+            stats.avg_send_rate = stats.sent/(stats.end_time - stats.start_time)*1000;
+            setTimeout(function() {
+                var final_time = Date.now();
+                if (!stats.last_received_time) {
+                    var received = stats.received - stats.in_progress;
+                    stats.avg_receive_rate = received/(final_time - stats.start_time)*1000;
+                } else {
+                    stats.avg_receive_rate =
+                        stats.received/(stats.last_received_time - stats.start_time)*1000;
+                }
+                wait_time_expired = true;
+                process.stdout.write('\n');
+                return callback(null, stats);
+            }, options.wait_time);
         }
         if ((now - stats.one_sec_start) >= 1000) {
             process.stdout.write('.');
             // reset one second counters
             stats.one_sec_start = now;
-            stats.one_sec_pkt_ct = 0;
+            if (!done) stats.one_sec_pkt_ct = 0;
         }
-        if (stats.one_sec_pkt_ct < options.rate) {
+        if (!done && stats.one_sec_pkt_ct < options.rate) {
             // start a new session
             var rand = Math.floor(Math.random()*100);
             var index = buckets[rand];
@@ -67,13 +88,14 @@ function _run(options, buckets, callback) {
             start_session(options, stats, session);
         }
 
-        setTimeout(check, Math.floor(1000/options.rate));
+        if (!wait_time_expired) setTimeout(check, Math.floor(1000/options.rate));
     };
 
     check();
 }
 
-// Each session must have its own socket. Therefore we use a new agent for each session.
+// Each session must have its own socket.
+// Therefore we use a new agent for each session and set the maxSocket to 1
 //
 function start_session(options, stats, session) {
     options.agent = false;
@@ -81,6 +103,8 @@ function start_session(options, stats, session) {
 }
 
 function issue_request(options, stats, session, index) {
+    if (done) return;
+
     var now = Date.now();
     if ((now - stats.one_sec_start) >= 1000) {
         process.stdout.write('.');
@@ -95,6 +119,7 @@ function issue_request(options, stats, session, index) {
     // update send stats
     stats.sent++;
     stats.one_sec_pkt_ct++;
+    stats.in_progress++;
 
     var start = Date.now();
 
@@ -114,6 +139,10 @@ function issue_request(options, stats, session, index) {
 
             // update receive stats
             stats.received++;
+            stats.in_progress--;
+            if (stats.in_progress === 0 && done) {
+                stats.last_received_time = Date.now();
+            }
 
             response.body = data;
 
@@ -128,6 +157,7 @@ function issue_request(options, stats, session, index) {
                     return;
                 }
                 if (newOptions === 'done') return;
+
                 newOptions.host = options.host;
                 newOptions.port = options.port;
                 newOptions.agent = options.agent;
@@ -139,8 +169,11 @@ function issue_request(options, stats, session, index) {
         });
     });
 
+    // Only allow one socket per session
+    request.agent.maxSockets = 1;
+
     request.on('error', function(err) {
-        console.log("request error: "+err);
+        console.log("request error: "+err+", options = "+inspect(options));
         // update error stats
         stats.errors++;
     });
