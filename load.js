@@ -1,4 +1,4 @@
-var https = require('https');
+var _http;
 
 /**
  * Run load test
@@ -10,6 +10,8 @@ var https = require('https');
  */
 exports.run = function(options, callback) {
     if (!options.protocol) return callback(new Error("options.protocol required"));
+    _http = options.protocol === 'http' ? require('http') : require('https');
+
     var probability = 0;
     var session;
     var buckets = new Array(100);
@@ -28,11 +30,11 @@ exports.run = function(options, callback) {
     if (probability != 100) return callback(new Error("session probabilities must add up to exactly 100"));
     options.time = options.time*1000;
 
-    send_requests(options, buckets, callback);
+    _run(options, buckets, callback);
 };
 
 
-function send_requests(options, buckets, callback) {
+function _run(options, buckets, callback) {
     var time = Date.now();
     var stats = {
         start_time: time,
@@ -71,28 +73,14 @@ function send_requests(options, buckets, callback) {
     check();
 }
 
-//TODO:  parse options.protocol and allow http
-//
 // Each session must have its own socket. Therefore we use a new agent for each session.
 //
 function start_session(options, stats, session) {
-    var req = session.requests[0];
-    var opts = {
-        agent: false,
-        host: options.host,
-        port: options.port,
-        path: req.path,
-        method: req.method,
-        headers: req.headers || options.headers,
-        body: req.body,
-        encoding: req.encoding || options.encoding,
-        rate: options.rate
-    };
-
-    issue_request(opts, stats, session, 0);
+    options.agent = false;
+    issue_request(options, stats, session, 0);
 }
 
-function issue_request(options, stats, session, index, opaque) {
+function issue_request(options, stats, session, index) {
     var now = Date.now();
     if ((now - stats.one_sec_start) >= 1000) {
         process.stdout.write('.');
@@ -101,7 +89,7 @@ function issue_request(options, stats, session, index, opaque) {
         stats.one_sec_pkt_ct = 0;
     }
     if (stats.one_sec_pkt_ct >= options.rate) {
-        return process.nextTick(function() { issue_request(options, stats, session, index, opaque); });
+        return process.nextTick(function() { issue_request(options, stats, session, index); });
     }
 
     // update send stats
@@ -110,7 +98,7 @@ function issue_request(options, stats, session, index, opaque) {
 
     var start = Date.now();
 
-    var request = https.request(options, function(response) {
+    var request = _http.request(options, function(response) {
 
         var data = '';
         response.setEncoding('utf8');
@@ -131,20 +119,22 @@ function issue_request(options, stats, session, index, opaque) {
 
             var req = session.requests[index];
             if (!req) return;
-            req.next(response, opaque, function(err, nextReq, opaque2) {
+
+            response.opaque = options.opaque;
+            req(response, function(err, newOptions) {
                 if (err) {
                     console.log(err);
                     stats.errors++;
                     return;
                 }
-                if (nextReq === 'done') return;
-                nextReq.host = options.host;
-                nextReq.port = options.port;
-                nextReq.agent = options.agent;
-                nextReq.rate = options.rate;
-                nextReq.headers = nextReq.headers || options.headers;
-                nextReq.encoding = nextReq.encoding || options.encoding;
-                issue_request(nextReq, stats, session, index+1, opaque2);
+                if (newOptions === 'done') return;
+                newOptions.host = options.host;
+                newOptions.port = options.port;
+                newOptions.agent = options.agent;
+                newOptions.rate = options.rate;
+                newOptions.headers = newOptions.headers || options.headers;
+                newOptions.encoding = newOptions.encoding || options.encoding;
+                issue_request(newOptions, stats, session, index+1);
             });
         });
     });
