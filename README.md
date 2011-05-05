@@ -1,1 +1,1 @@
-node-load is a load testing tool written in node.js
+load.js is a load testing tool written using node.js
