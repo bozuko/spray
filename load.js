@@ -48,6 +48,15 @@ exports.run = function(options, callback) {
 
     var check = function() {
         var now = Date.now();
+        var delta = now - stats.one_sec_start;
+        if ((delta) >= 1000) {
+            process.stdout.write('.');
+            //console.log("ONE SEC");
+            // reset one second counters
+            stats.one_sec_start = now;
+            stats.one_sec_pkt_ct = 0;
+        }
+
         if (!load.done && (now - stats.start_time) >= options.time) {
             load.done = true;
             stats.end_time = now;
@@ -58,16 +67,150 @@ exports.run = function(options, callback) {
             start_session(options, load.buckets);
         }
 
-        setTimeout(check, Math.floor(1000/options.rate));
+        setTimeout(check, options.interval);
     };
 
     check();
 };
 
+// Each session must have its own socket.
+// Therefore we use a new agent for each session and set the maxSocket to 1
+//
+function start_session(options, buckets) {
+    options.agent = false;
+
+    // Only start the session if there are no queued messages, we don't have a maximum #
+    // of sessions and we are under the max request rate
+    //
+        //console.log('start_session: stats.queued = '+stats.queued+', stats.one_sec_pkt_ct = '+stats.one_sec_pkt_ct+", stats.sessions = "+stats.sessions);
+    if (!stats.queued && stats.sessions < options.max_sessions &&
+        stats.one_sec_pkt_ct <= options.rate) {
+            //console.log('start_session');
+            var rand = Math.floor(Math.random()*100);
+            var index = buckets[rand];
+            var session = options.sessions[index];
+            stats.sessions++;
+            stats.total_sessions_started++;
+            issue_request(options, session, 0);
+    } else {
+        //console.log('don\'t start session');
+    }
+}
+
+function issue_request(options, session, index) {
+    if (load.done) return;
+    //console.log("issue request");
+
+    var now = Date.now();
+    if (stats.one_sec_pkt_ct >= options.rate) {
+        stats.queued++;
+        var delta = 1000 - (now - stats.one_sec_start);
+        //console.log("delta = "+delta);
+        // Don't immediately retry. This causes CPU churn.
+        if (delta < 5) delta = options.interval;
+        //console.log("defer request: delta = "+delta);
+
+        return setTimeout(function() {
+            //console.log("issuing deferred request");
+            stats.queued--;
+            issue_request(options, session, index);
+        }, delta);
+    }
+
+    // update send stats
+    stats.sent++;
+    stats.one_sec_pkt_ct++;
+    stats.in_progress++;
+
+    var start = now;
+
+    var request = load.http.request(options, function(response) {
+
+        var data = '';
+        response.setEncoding('utf8');
+        response.on('data', function(chunk) {
+            data += chunk;
+        });
+        response.on('end', function() {
+            var latency = Date.now() - start;
+
+            // update latency stats
+            if (latency > stats.max_latency) stats.max_latency = latency;
+            if (latency < stats.min_latency) stats.min_latency = latency;
+
+            // update receive stats
+            stats.received++;
+            stats.in_progress--;
+
+            if (stats.in_progress === 0 && load.done) {
+                stats.last_received_time = Date.now();
+            }
+
+            response.body = data;
+
+            var request_generator = session.request_generators[index];
+            if (!request_generator) {
+                end_session();
+                return;
+            }
+
+            response.opaque = options.opaque;
+            request_generator(response, function(err, newOptions) {
+                if (err) {
+                    end_session_error();
+                    console.log('Error: path = '+options.path+', method = '+options.method+
+                                ', opaque = '+JSON.stringify(options.opaque)+
+                                'response.body = '+response.body+'\nerr = '+err);
+                    return;
+                }
+                if (newOptions === 'done') {
+                    end_session();
+                    return;
+                }
+                newOptions.host = options.host;
+                newOptions.port = options.port;
+                newOptions.agent = options.agent;
+                newOptions.rate = options.rate;
+                newOptions.interval = options.interval;
+                newOptions.headers = newOptions.headers || options.headers;
+                newOptions.encoding = newOptions.encoding || options.encoding;
+                issue_request(newOptions, session, index+1);
+            });
+        });
+    });
+
+    // Only allow one socket per session
+    request.agent.maxSockets = 1;
+
+    request.on('error', function(err) {
+        //console.log("request error: "+err+", options = "+inspect(options));
+        // update error stats
+        stats.errors++;
+    });
+
+    var body = options.body || null,
+        encoding = options.encoding || null;
+    request.end(body, encoding);
+}
+
+function end_session() {
+    //console.log("end session");
+    stats.sessions--;
+    stats.total_sessions_completed++;
+}
+
+function end_session_error() {
+    //console.log("end session error");
+    stats.sessions--;
+    stats.total_sessions_error++;
+    stats.errors++;
+}
+
 function init(options) {
     if (!options.protocol) return new Error("options.protocol required");
     load.http = options.protocol === 'http' ? require('http') : require('https');
     options.time = options.time*1000;
+    options.interval = options.interval || Math.floor(1000/options.rate);
 
     var buckets = init_probabilities(options);
     if (buckets instanceof Error) return buckets;
@@ -118,126 +261,6 @@ function fini() {
     clearInterval(load.timer);
     dump_stats();
     load.stream.end();
-    load.stream.destroy();
+    load.stream.destroySoon();
     return load.callback(null, stats);
-}
-
-
-// Each session must have its own socket.
-// Therefore we use a new agent for each session and set the maxSocket to 1
-//
-function start_session(options, buckets) {
-    options.agent = false;
-
-    // Only start the session if there are no queued messages, we don't have a maximum #
-    // of sessions and we are under the max request rate
-    //
-    if (!stats.queued && stats.sessions < options.max_sessions &&
-        stats.one_sec_pkt_ct <= options.rate) {
-            var rand = Math.floor(Math.random()*100);
-            var index = buckets[rand];
-            var session = options.sessions[index];
-            stats.sessions++;
-            stats.total_sessions_started++;
-            issue_request(options, session, 0);
-    }
-}
-
-function issue_request(options, session, index) {
-    if (load.done) return;
-
-    var now = Date.now();
-    var delta = now - stats.one_sec_start;
-    if ((delta) >= 1000) {
-        process.stdout.write('.');
-        // reset one second counters
-        stats.one_sec_start = now;
-        stats.one_sec_pkt_ct = 0;
-    }
-    if (stats.one_sec_pkt_ct >= options.rate) {
-        stats.queued++;
-        return setTimeout(function() {
-            stats.queued--;
-            issue_request(options, session, index);
-        }, delta);
-    }
-
-    // update send stats
-    stats.sent++;
-    stats.one_sec_pkt_ct++;
-    stats.in_progress++;
-
-    var start = Date.now();
-
-    var request = load.http.request(options, function(response) {
-
-        var data = '';
-        response.setEncoding('utf8');
-        response.on('data', function(chunk) {
-            data += chunk;
-        });
-        response.on('end', function() {
-            var latency = Date.now() - start;
-
-            // update latency stats
-            if (latency > stats.max_latency) stats.max_latency = latency;
-            if (latency < stats.min_latency) stats.min_latency = latency;
-
-            // update receive stats
-            stats.received++;
-            stats.in_progress--;
-
-            if (stats.in_progress === 0 && load.done) {
-                stats.last_received_time = Date.now();
-            }
-
-            response.body = data;
-
-            var req = session.requests[index];
-            if (!req) {
-                stats.sessions--;
-                stats.total_sessions_completed++;
-                return;
-            }
-
-            response.opaque = options.opaque;
-            req(response, function(err, newOptions) {
-                if (err) {
-                    stats.sessions--;
-                    stats.total_sessions_error++;
-                    console.log(err);
-                    console.log('Error: path = '+options.path+', method = '+options.method+
-                                ', opaque = '+JSON.stringify(options.opaque)+
-                                'response.body = '+response.body+'\nerr = '+err);
-                    stats.errors++;
-                    return;
-                }
-                if (newOptions === 'done') {
-                    stats.sessions--;
-                    stats.total_sessions_completed++;
-                    return;
-                }
-                newOptions.host = options.host;
-                newOptions.port = options.port;
-                newOptions.agent = options.agent;
-                newOptions.rate = options.rate;
-                newOptions.headers = newOptions.headers || options.headers;
-                newOptions.encoding = newOptions.encoding || options.encoding;
-                issue_request(newOptions, session, index+1);
-            });
-        });
-    });
-
-    // Only allow one socket per session
-    request.agent.maxSockets = 1;
-
-    request.on('error', function(err) {
-        console.log("request error: "+err+", options = "+inspect(options));
-        // update error stats
-        stats.errors++;
-    });
-
-    var body = options.body || null,
-        encoding = options.encoding || null;
-    request.end(body, encoding);
 }
