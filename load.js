@@ -10,12 +10,18 @@ var stats = {
     in_progress: 0,
     errors: 0,
     sessions: 0,
+    max_concurrent_sessions: 0,
     total_sessions_started: 0,
     total_sessions_completed: 0,
     total_sessions_error: 0,
     queued: 0,
+    max_queued: 0,
     min_latency: 1000000000000,
-    max_latency: 0
+    max_latency: 0,
+    one_min_start: 0,
+    one_min_total_latency: 0,
+    one_min_received: 0,
+    one_min_avg_latency: 0
 };
 
 var load = {
@@ -49,12 +55,23 @@ exports.run = function(options, callback) {
     var check = function() {
         var now = Date.now();
         var delta = now - stats.one_sec_start;
-        if ((delta) >= 1000) {
+
+        // reset the one second counters
+        if (delta >= 1000) {
             process.stdout.write('.');
             //console.log("ONE SEC");
             // reset one second counters
             stats.one_sec_start = now;
             stats.one_sec_pkt_ct = 0;
+        }
+
+        // reset the one minute counters
+        var minDelta = now - stats.one_min_start;
+        if (minDelta > 60000) {
+            stats.one_min_avg_latency = stats.one_min_total_latency/stats.one_min_received;
+            stats.one_min_start = now;
+            stats.one_min_total_latency = 0;
+            stats.one_min_received = 0;
         }
 
         if (!load.done && (now - stats.start_time) >= options.time) {
@@ -90,6 +107,7 @@ function start_session(options, buckets) {
             var index = buckets[rand];
             var session = options.sessions[index];
             stats.sessions++;
+            if (stats.sessions > stats.max_concurrent_sessions) stats.max_concurrent_sessions = stats.sessions;
             stats.total_sessions_started++;
             issue_request(options, session, 0);
     } else {
@@ -104,6 +122,7 @@ function issue_request(options, session, index) {
     var now = Date.now();
     if (stats.one_sec_pkt_ct >= options.rate) {
         stats.queued++;
+        if (stats.queued > stats.max_queued) stats.max_queued = stats.queued;
         var delta = 1000 - (now - stats.one_sec_start);
         //console.log("delta = "+delta);
         // Don't immediately retry. This causes CPU churn.
@@ -122,7 +141,7 @@ function issue_request(options, session, index) {
     stats.one_sec_pkt_ct++;
     stats.in_progress++;
 
-    var start = now;
+    var start = Date.now();
 
     var request = load.http.request(options, function(response) {
 
@@ -141,6 +160,11 @@ function issue_request(options, session, index) {
             // update receive stats
             stats.received++;
             stats.in_progress--;
+
+            //update one minute stats
+            stats.one_min_total_latency += latency;
+            stats.one_min_received++;
+
 
             if (stats.in_progress === 0 && load.done) {
                 stats.last_received_time = Date.now();
@@ -219,6 +243,7 @@ function init(options) {
     var time = Date.now();
     stats.start_time = time;
     stats.one_sec_start = time;
+    stats.one_min_start = time;
 
     load.file = options.file || 'load_' + time + '.out';
     load.stream = fs.createWriteStream(load.file);
