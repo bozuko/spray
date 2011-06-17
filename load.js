@@ -31,12 +31,18 @@ var load = {
     timer: null,
     done: false,
     http: null,
-    callback: null
+    callback: null,
+    aborted: false
 };
 
 function dump_stats() {
     load.stream.write(JSON.stringify(stats) + "\n\n");
 }
+
+
+exports.abort = function() {
+    load.aborted = true;
+};
 
 /**
  * Run load test
@@ -74,7 +80,7 @@ exports.run = function(options, callback) {
             stats.one_min_received = 0;
         }
 
-        if (!load.done && (now - stats.start_time) >= options.time) {
+        if (load.aborted || !load.done && (now - stats.start_time) >= options.time) {
             load.done = true;
             stats.end_time = now;
             stats.avg_send_rate = stats.sent/(stats.end_time - stats.start_time)*1000;
@@ -182,7 +188,7 @@ function issue_request(options, session, index) {
             request_generator(response, function(err, newOptions) {
                 if (err) {
                     end_session_error();
-                    console.log('Error: path = '+options.path+', method = '+options.method+
+                    console.error('Error: path = '+options.path+', method = '+options.method+
                                 ', opaque = '+JSON.stringify(options.opaque)+
                                 'response.body = '+response.body+'\nerr = '+err);
                     return;
@@ -207,7 +213,7 @@ function issue_request(options, session, index) {
     request.agent.maxSockets = 1;
 
     request.on('error', function(err) {
-        //console.log("request error: "+err+", options = "+inspect(options));
+        console.error("request error: "+err+", options = "+inspect(options));
         // update error stats
         stats.errors++;
     });
@@ -224,7 +230,7 @@ function end_session() {
 }
 
 function end_session_error() {
-    //console.log("end session error");
+    console.log("end session error");
     stats.sessions--;
     stats.total_sessions_error++;
     stats.errors++;
