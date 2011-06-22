@@ -36,6 +36,9 @@ var load = {
 };
 
 function dump_stats() {
+    var interval = Date.now() - stats.start_time;
+    stats.avg_send_rate = stats.sent/interval*1000;
+    stats.avg_receive_rate = stats.received/interval*1000;
     load.stream.write(JSON.stringify(stats) + "\n\n");
 }
 
