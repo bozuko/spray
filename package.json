@@ -2,12 +2,12 @@
   "author": "Andrew J. Stone <andrew.stone@bozuko.com>",
   "name": "load",
   "description": "Flexible load tester that allows real world testing similar to tsung",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "repository": {
-    "url": ""
+    "url": "https://github.com/bozuko/load.git"
   },
   "engines": {
-    "node": "~0.4.8"
+    "node": "*"
   },
   "main": "./load.js",
   "private":true,
