@@ -12,10 +12,11 @@ var options = {
     protocol: 'http',
     hostname: '127.0.0.1',
     port: 2701,
-    rate: 1500, // req/sec
-    time: 30, // sec
+    rate: 100, // req/sec
+    time: 300, // sec
     timeout: 20000, //ms  -- socket timeout
     max_sessions: 50,
+    enable_cube:true,
     sessions: [{
         weight: 1,
         start: start_session

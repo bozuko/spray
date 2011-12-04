@@ -1,12 +1,15 @@
 var inspect = require('util').inspect,
     fs = require('fs'),
-    Http = require('./lib/http')
+    Http = require('./lib/http'),
+    cube = require('cube')
 ;
 
 var stats = exports.stats = {
     start_time: 0,
     one_sec_start: 0,
-    one_sec_pkt_ct: 0,
+    one_sec_sent: 0,
+    one_sec_received: 0,
+    one_sec_total_latency: 0,
     sent: 0,
     received: 0,
     in_progress: 0,
@@ -33,8 +36,13 @@ var tid;
 // Supported protocols
 exports.http = new Http(stats);
 
+var cube_client;
 exports.run = function(options, callback) {
     this.http.config = options;
+
+    if (options.enable_cube) {
+	cube_client = cube.emitter().open('127.0.0.1', 1080);
+    }
 
     if (!options.protocol) return new Error("options.protocol required");
     options.time = options.time*1000;
@@ -82,7 +90,7 @@ function start_session(options) {
     options.agent = false;
 
     if (!stats.queued && stats.sessions < options.max_sessions &&
-        stats.one_sec_pkt_ct <= options.rate) {
+        stats.one_sec_sent <= options.rate) {
             var rand = Math.floor(Math.random()*buckets.length);
             var index = buckets[rand];
             var session = options.sessions[index];
@@ -108,8 +116,11 @@ function reset_counters(now) {
 
     // reset the one second counters
     if (delta >= 1000) {
+	update_cube(now);
         stats.one_sec_start = now;
-        stats.one_sec_pkt_ct = 0;
+        stats.one_sec_sent = 0;
+	stats.one_sec_received = 0;
+	stats.one_sec_total_latency = 0;
     }
 
     // reset the one minute counters
@@ -119,5 +130,19 @@ function reset_counters(now) {
         stats.one_min_start = now;
         stats.one_min_total_latency = 0;
         stats.one_min_received = 0;
+    }
+}
+
+function update_cube(now) {
+    if (cube_client) {
+	cube_client.send({
+	    type: 'random',
+	    time: now,
+	    data: {
+		sent: stats.one_sec_sent,
+		received: stats.one_sec_received,
+		latency: stats.one_sec_total_latency/stats.one_sec_received
+	    }
+	});
     }
 }
