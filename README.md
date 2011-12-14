@@ -59,3 +59,21 @@ function start_session(callback) {
     });
 }
 ```
+
+## Config
+
+### Required
+   
+   * **protocol**: string - 'http' || 'https'
+   * **hostname**: string - The hostname used in http.request
+   * **port**: number - The port used in http.request
+   * **rate**: number - Requests/second
+   * **time**: number - Duration of the test in seconds
+   * **timeout**: number - The timeout for http requests (ms)
+   * **max_sessions**: number - The maximum number of concurrent sessions
+   * **sessions**: [{
+    * **weight**: number - A weight which selects a session,
+    * **start**: function - The function which starts a session}]
+
+### Optional
+   * enable_cube: boolean - 'Whether or not to enable cube graphing. Requires mongodb and cube.
