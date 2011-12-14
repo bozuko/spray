@@ -10,7 +10,6 @@
     "node": "*"
   },
   "main": "./load.js",
-  "private":true,
   "dependencies": {},
   "devDependencies": {}
 }
