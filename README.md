@@ -76,4 +76,4 @@ function start_session(callback) {
     * **start**: function - The function which starts a session}]
 
 ### Optional
-   * enable_cube: boolean - 'Whether or not to enable cube graphing. Requires mongodb and cube.
+   * **enable_cube**: boolean - Whether or not to enable cube graphing. Requires mongodb and cube.
