@@ -1,6 +1,5 @@
 var async = require('async'),
-    load = require('load'),
-    http = load.http,
+    Load = require('spray'),
     inspect = require('util').inspect
 ;
 
@@ -23,13 +22,25 @@ var options = {
     }]
 };
 
-load.run(options, function(err, results) {
+var load = new Load(options);
+load.run(function(err, results) {
     if (err) return console.error("Err = "+err);
     console.log("\nresults = "+require('util').inspect(results));
 });
 
+load.on('sec', function(stats) {
+    console.log("ONE SEC!");
+});
+
+load.on('min', function(stats) {
+    console.log("ONE MIN!");
+    console.log(stats);
+});
+
+
 function start_session(callback) {
     var token = Math.floor(Math.random()*100000);
+    var http = load.http;
     return http.request({
         headers: {'content-type': 'application/json'},
         encoding: 'utf-8',
