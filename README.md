@@ -77,3 +77,9 @@ function start_session(callback) {
 
 ### Optional
    * **enable_cube**: boolean - Whether or not to enable cube graphing. Requires mongodb and cube.
+                            
+## Install
+
+    npm install spray
+
+If you would like live charts with cube, you must install [cube](https://github.com/square/cube/wiki) and [MongoDb](http://www.mongodb.org/display/DOCS/Quickstart)
