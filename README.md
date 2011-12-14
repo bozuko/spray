@@ -83,3 +83,21 @@ function start_session(callback) {
     npm install spray
 
 If you would like live charts with cube, you must install [cube](https://github.com/square/cube/wiki) and [MongoDb](http://www.mongodb.org/display/DOCS/Quickstart)
+
+## Cube properties
+
+**Event Type**: 'random'
+
+This event type is used because it allows us to use cube's default collections.
+ 
+**Properties**: 
+ 
+  * sent
+  * received
+  * latency
+  
+More properties such as ***timeouts*** and ***errors*** will be added in the future.
+                                                     
+Example Cube Query
+
+    median(random(latency))
