@@ -91,12 +91,14 @@ If you would like live charts with cube, you must install [cube](https://github.
 This event type is used because it allows us to use cube's default collections.
  
 **Properties**: 
+
+Spray reports to cube every second. The properties below are totals for that second, except for latency, which is the average latency of all packets during that second.
  
   * sent
   * received
   * latency
-  
-More properties such as ***timeouts*** and ***errors*** will be added in the future.
+  * timeouts
+  * errors
                                                      
 Example Cube Query
 
