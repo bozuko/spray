@@ -2,7 +2,7 @@
   "author": "Andrew J. Stone <andrew.stone@bozuko.com>",
   "name": "spray",
   "description": "Flexible load tester that allows real world testing similar to tsung",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "repository": {
     "url": "https://github.com/bozuko/spray"
   },
