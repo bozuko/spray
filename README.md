@@ -92,7 +92,7 @@ This event type is used because it allows us to use cube's default collections.
  
 **Properties**: 
 
-Spray reports to cube every second. The properties below are totals for that second, except for latency which is the average latency of all packets during that second.
+Spray reports to cube every second. The properties below are totals for that second, except for latency, which is the average latency of all packets during that second.
  
   * sent
   * received
