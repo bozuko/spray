@@ -92,11 +92,10 @@ var spray = new Spray(config);
    * **timeout**: number - The timeout for http requests (ms)
    * **max_sessions**: number - The maximum number of concurrent sessions to run     
    * **sessions**: [sessions]
-    * **weight**: number - A weight which allows in session selection.
-    * **start**: function - ```start_session(http, callback)```. make http requests with the http.request method and call ```callback``` when the session is over.
-
+    * **weight**: number - A weight which changes the probabilities for session selection.
+    * **start**: function - ```start_session(http, callback)```. Make http requests with the ```http.request``` method and call ```callback``` when the session is over.
    * **enable_cube**: boolean - Whether or not to enable cube graphing. Requires mongodb and cube. defaults to falsy.
-   * **agent**: mixed - the http agent setting for http.request - Defaults to a custom agent implementation with maxSockets set to 1. Can be passed another agent or ```false``` to use no agent.
+   * **agent**: mixed - the http agent setting for ```http.request``` - Defaults to a custom agent implementation with maxSockets set to 1. Can be passed another agent or ```false``` to use no agent.
 
 
 ### http.request
@@ -120,7 +119,7 @@ function start_session(http, callback) {
 	return http.request({
 	    headers: {
 		'content-type': 'application/json' 
-		// no connection: 'keep-alive' header closes the socket as this is the last req in this session
+		// no 'connection': 'keep-alive' header closes the socket as this is the last req in this session
 	    },
 	    encoding: 'utf-8',
 	    path: user.links.checkin+'/?token='+token,
@@ -138,7 +137,7 @@ function start_session(http, callback) {
 ```
                             
 ## Sessions
-In order to simulate real clients we want each client to use the same socket for each request in the same session if the 'connection' header is set to 'keep-alive'. A custom [agent](https://github.com/bozuko/spray/raw/master/lib/agent.js) is used to facilitate this, and the default is to use that agent. A different agent can be used by passing it in the agent parameter in the constructor options to spray. Setting agent to false uses no agent. It is recommended to use the custom agent if keep-alive is used by clients of your API.
+In order to simulate real clients we want each client to use the same socket for each request in the same session if the 'connection' header is set to 'keep-alive'. A custom [agent](https://github.com/bozuko/spray/blob/master/lib/agent.js) is used to facilitate this, and the default is to use that agent. A different agent can be used by passing it in the agent parameter of the Spray constructor options. Setting agent to false uses no agent. It is recommended to use the custom agent if keep-alive is used by clients of your API.
 
 ## Install
 
