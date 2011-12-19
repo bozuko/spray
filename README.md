@@ -45,8 +45,7 @@ load.on('min', function(stats) {
     console.log(stats);
 });
 
-function start_session(callback) {
-    var http = load.http;
+function start_session(http, callback) {
     return http.request({
         headers: {'content-type': 'application/json'},
         encoding: 'utf-8',
@@ -60,9 +59,30 @@ function start_session(callback) {
 }
 ```
 
-## Config
+## API
 
-### Required
+### Constructor
+
+```javascript
+var Spray = require('spray');
+var config = {
+    protocol: 'https',
+    hostname: 'example.com',
+    port: 8000,
+    rate: 100, // req/sec
+    time: 300, // sec
+    timeout: 20000, //ms  -- socket timeout
+    max_sessions: 500,
+    enable_cube:true,
+    sessions: [{
+        weight: 1,
+        start: start_session // function defined elsewhere
+    }]    
+};
+var spray = new Spray(config);
+```
+
+#### config object
    
    * **protocol**: string - 'http' || 'https'
    * **hostname**: string - The hostname used in http.request
@@ -70,14 +90,56 @@ function start_session(callback) {
    * **rate**: number - Requests/second
    * **time**: number - Duration of the test in seconds
    * **timeout**: number - The timeout for http requests (ms)
-   * **max_sessions**: number - The maximum number of concurrent sessions
-   * **sessions**: [{
-    * **weight**: number - A weight which selects a session,
-    * **start**: function - The function which starts a session}]
+   * **max_sessions**: number - The maximum number of concurrent sessions to run     
+   * **sessions**: [sessions]
+    * **weight**: number - A weight which allows in session selection.
+    * **start**: function - ```start_session(http, callback)```. make http requests with the http.request method and call ```callback``` when the session is over.
 
-### Optional
-   * **enable_cube**: boolean - Whether or not to enable cube graphing. Requires mongodb and cube.
+   * **enable_cube**: boolean - Whether or not to enable cube graphing. Requires mongodb and cube. defaults to falsy.
+   * **agent**: mixed - the http agent setting for http.request - Defaults to a custom agent implementation with maxSockets set to 1. Can be passed another agent or ```false``` to use no agent.
+
+
+### http.request
+
+An http object gets passed to the session ``start`` function. This function keeps stats on all requests and should be used to send all requests. The options are the same as the  http.request function provided by node. The only difference is the agent option described in the **Sessions** section below. 
+
+```javascript
+function start_session(http, callback) {
+    return http.request({
+        headers: {
+            'content-type': 'application/json',
+	    'connection': 'keep-alive'  // use the same socket for the next request
+        },
+        encoding: 'utf-8',
+        path: '/api',
+        method: 'GET'
+    }, function(err, res) {
+        if (err) return callback(err);
+        if (res.statusCode != 200) return callback(res.statusCode);
+        var user = JSON.parse(res.body);
+	return http.request({
+	    headers: {
+		'content-type': 'application/json' 
+		// no connection: 'keep-alive' header closes the socket as this is the last req in this session
+	    },
+	    encoding: 'utf-8',
+	    path: user.links.checkin+'/?token='+token,
+	    method: 'POST',
+	    body: JSON.stringify({
+		ll: [42.3, -71.8]
+	    })
+	}, function(err, res) {
+	    if (err) return callback(err);
+	    if (res.statusCode != 200) return callback(res.statusCode);
+	    return callback(null);
+        });
+    });
+}
+```
                             
+## Sessions
+In order to simulate real clients we want each client to use the same socket for each request in the same session if the 'connection' header is set to 'keep-alive'. A custom [agent](https://github.com/bozuko/spray/raw/master/lib/agent.js) is used to facilitate this, and the default is to use that agent. A different agent can be used by passing it in the agent parameter in the constructor options to spray. Setting agent to false uses no agent. It is recommended to use the custom agent if keep-alive is used by clients of your API.
+
 ## Install
 
     npm install spray

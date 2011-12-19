@@ -1,5 +1,4 @@
-var async = require('async'),
-    Load = require('spray'),
+var Load = require('spray'),
     inspect = require('util').inspect
 ;
 
@@ -10,11 +9,11 @@ process.on('exit', function() {
 var options = {
     protocol: 'http',
     hostname: '127.0.0.1',
-    port: 2701,
-    rate: 100, // req/sec
-    time: 300, // sec
+    port: 2899,
+    rate: 500, // req/sec
+    time: 60, // sec
     timeout: 20000, //ms  -- socket timeout
-    max_sessions: 50,
+    max_sessions: 1000,
     enable_cube:true,
     sessions: [{
         weight: 1,
@@ -29,20 +28,21 @@ load.run(function(err, results) {
 });
 
 load.on('sec', function(stats) {
-    console.log("ONE SEC!");
+    console.log('sent '+stats.sec.sent+' packets');
+    console.log('received '+stats.sec.received+' packets');
 });
 
 load.on('min', function(stats) {
-    console.log("ONE MIN!");
     console.log(stats);
 });
 
-
-function start_session(callback) {
+function start_session(http, callback) {
     var token = Math.floor(Math.random()*100000);
-    var http = load.http;
     return http.request({
-        headers: {'content-type': 'application/json'},
+        headers: {
+            'content-type': 'application/json',
+	    'connection': 'keep-alive'
+        },
         encoding: 'utf-8',
         path: '/user/?token='+token,
         method: 'GET'
@@ -50,18 +50,20 @@ function start_session(callback) {
         if (err) return callback(err);
         if (res.statusCode != 200) return callback(res.statusCode);
         var user = JSON.parse(res.body);
-        return http.request({
-            headers: {'content-type': 'application/json'},
-            encoding: 'utf-8',
-            path: user.links.checkin+'/?token='+token,
-            method: 'POST',
-            body: JSON.stringify({
-                ll: [42.3, -71.8]
-            })
-        }, function(err, res) {
-            if (err) return callback(err);
-            if (res.statusCode != 200) return callback(res.statusCode);
-            return callback(null);
+	return http.request({
+	    headers: {
+		'content-type': 'application/json'
+	    },
+	    encoding: 'utf-8',
+	    path: user.links.checkin+'/?token='+token,
+	    method: 'POST',
+	    body: JSON.stringify({
+		ll: [42.3, -71.8]
+	    })
+	}, function(err, res) {
+	    if (err) return callback(err);
+	    if (res.statusCode != 200) return callback(res.statusCode);
+	    return callback(null);
         });
     });
 }

@@ -36,7 +36,6 @@ var Load = module.exports = function(options) {
     this.options = options;
     this.init_buckets();
     this.cube_client = options.enable_cube ? cube.emitter().open('127.0.0.1', 1080) : null;
-    this.http = new Http(this.stats);
 };
 
 util.inherits(Load, EventEmitter);
@@ -44,7 +43,6 @@ util.inherits(Load, EventEmitter);
 Load.prototype.run = function(callback) {
     var options = this.options;
     var self = this;
-    this.http.config = options;
     var time = Date.now();
     self.stats.start = time;
     self.stats.sec.start = time;
@@ -89,7 +87,6 @@ Load.prototype.start_session = function() {
     var options = this.options;
     var stats = this.stats;
     var buckets = this.buckets;
-    options.agent = false;
     if (!stats.queued && stats.sessions < options.max_sessions &&
         stats.sec.sent <= options.rate) {
             var rand = Math.floor(Math.random()*buckets.length);
@@ -100,7 +97,8 @@ Load.prototype.start_session = function() {
                 stats.max_sessions = stats.sessions;
             }
             stats.total_sessions_started++;
-            session.start(function(err) {
+	    var http = new Http(options, stats);
+            return session.start(http, function(err) {
                 stats.sessions--;
                 if (err) {
                     stats.total_sessions_error++;
